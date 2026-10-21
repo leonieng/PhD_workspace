@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 from scipy.constants import c, epsilon_0, mu_0
 from scipy.optimize import brentq
+import scipy.integrate as integrate
 
 
 # =============================================================================
@@ -138,7 +139,9 @@ def beta_curve(guide, func, m, n, f_c, f_max, n_f):
 
 
 def beta_exact(guide, f, m, n, func=lsm):
-    """beta of mode (m, n) at frequency f from the roots of the dispersion relation."""
+    """
+    beta of mode (m, n) at frequency f from the roots of the dispersion relation.
+    """
     k = 2 * np.pi * f / c
     roots = roots_in_s(guide, func, k)
     if len(roots) < n:
@@ -398,9 +401,142 @@ def compute_field_statistics(guide, m, beta_mn, fields, forces, x_grid, y_grid, 
         "dielectric_share_percent": share,
     }
 
+# Fourier series expansion-------------------------
+
+def calc_field_amplitude(A_mn, beta_mn, z_length, ky0):
+    """
+    Calculates field amplitude, alpha in Apsimon 2021, for given user inputs
+    """
+    field_amplitude = -1j *  A_mn * beta_mn * z_length * ky0
+    return field_amplitude
+
+def fourier_a_0_integrand(theta, w, r, ky0):
+    """
+    Calculates the integrand for the a_0 Fourier coefficient
+    """
+    first_cosine_arg = ((np.pi / w) * r) * np.cos(theta)
+    second_cosine_arg = ky0 * r * np.sin(theta)
+
+    first_cosine = np.cos(first_cosine_arg)
+    second_cosine = np.cos(second_cosine_arg)
+
+    integrand = first_cosine * second_cosine
+    return np.real(integrand)
+
+def fourier_a_n_integrand(theta, w, r, ky0, n):
+    """
+    Calculates the integrand for a_n Fourier coefficient
+    """
+    first_cosine_arg = ((np.pi / w) * r) * np.cos(theta)
+    second_cosine_arg = ky0 * r * np.sin(theta)
+    third_cosine_arg = n * theta
+    
+    first_cosine = np.cos(first_cosine_arg)
+    second_cosine = np.cos(second_cosine_arg)
+    third_cosine = np.cos(third_cosine_arg)
+    
+    integrand = first_cosine * second_cosine * third_cosine
+    return np.real(integrand)
+
+def fourier_b_n_integrand(theta, w, r, ky0, n):
+    """
+    Calculates the integrand for b_n Fourier coefficient
+    """
+    first_cosine_arg = ((np.pi / w) * r) * np.cos(theta)
+    second_cosine_arg = ky0 * r * np.sin(theta)
+    third_arg = n * theta
+        
+    first_cosine = np.cos(first_cosine_arg)
+    second_cosine = np.cos(second_cosine_arg)
+    third_sin = np.sin(third_arg)
+        
+    integrand = first_cosine * second_cosine * third_sin
+    return np.real(integrand)
+
+def fourier_a_0(field_amplitude, w, r, ky0):
+    """
+    Calculates the value of the Fourier coefficient a_0 for the longitudinal field
+
+    ----PUT FIELD_AMPLITUDE IN THE MAIN FUNCTION!!-----
+    """
+    integral, _ =  integrate.quad(fourier_a_0_integrand, -np.pi, np.pi, args=(w, r, ky0))
+    return integral * (field_amplitude / np.pi) 
+
+
+def fourier_a_n(field_amplitude, w, r, ky0, n):
+    """
+    Calculates the value of the Fourier coefficient a_n for the longitudinal field
+    """
+    integral, _  = integrate.quad(fourier_a_n_integrand, -np.pi, np.pi, args=(w, r, ky0, n))
+    return integral * (field_amplitude / np.pi) 
+
+def fourier_b_n(field_amplitude, w, r, ky0, n):
+    """
+    Calculates the value of the Fourier coefficient b_n for the longitudinal field
+    """
+    integral, _ = integrate.quad(fourier_b_n_integrand, -np.pi, np.pi, args=(w, r, ky0, n))
+    return integral * (field_amplitude/np.pi)
+
+def longitudinal_field_expansion_polar(A_mn, beta_mn, z_length, ky0, n, w, r, theta):
+    """
+    Calculates the multipole potential of the longitudinal field in polar coordinates r, theta, for a single value of
+    n that is inputted by the user.
+
+    n is the selected mode
+    """
+    field_amplitude = calc_field_amplitude(A_mn, beta_mn, z_length, ky0)
+
+    a_n = fourier_a_n(field_amplitude, w, r, ky0, n)
+    b_n = fourier_b_n(field_amplitude, w, r, ky0, n)
+
+    v_z = (a_n * np.cos(n*theta)) + (b_n * np.sin(n*theta))
+
+    return v_z
+
+
+def calc_fourier_poles(A_mn, beta_mn, z_length, ky0, n, w, a, theta):
+    """
+    Multipole expansion up to order n at a fixed angle theta, swept over r.
+
+    Returns
+    -------
+    v_n_array : (n, 100) complex array, one row per mode n = 1..n
+    a_0_row   : (100,) complex array, the a_0 coefficient at each r
+    v_z_total : (100,) complex array, a_0/2 + sum over modes
+    r_linspace: (100,) radii, so you can plot against r / w
+    """
+    r_max = np.sqrt((w / 2) ** 2 + a ** 2)
+    r_min = -r_max  # symmetry of DLW
+    r_linspace = np.linspace(r_max, r_min, 100)
+
+    field_amplitude = calc_field_amplitude(A_mn, beta_mn, z_length, ky0)
+
+    # a_0 does not depend on n, so compute it once per radius
+    a_0_row = np.array([fourier_a_0(field_amplitude, w, radius, ky0)
+                        for radius in r_linspace])
+
+    # works for n == 1 as well, so no if/else needed
+    n_values = np.arange(1, n + 1)
+
+    rows = []
+    for n_i in n_values:
+        row = [longitudinal_field_expansion_polar(A_mn, beta_mn, z_length, ky0,
+                                                  n_i, w, radius, theta)
+               for radius in r_linspace]
+        rows.append(row)
+
+    v_n_array = np.array(rows)                        # shape (n, 100)
+    v_z_total = a_0_row / 2 + v_n_array.sum(axis=0)   # shape (100,)
+
+    return v_n_array, a_0_row, v_z_total, r_linspace
+
+#-------------------------------------
+
 
 def format_field_statistics(stats):
-    """Plain-text lines for the dict returned by compute_field_statistics."""
+    """
+    Plain-text lines for the dict returned by compute_field_statistics.
+    """
     lines = [
         f"Fraction of E_y left after the magnetic force: kx^2/(kx^2+beta^2) = {stats['Ey_fraction_left']:.2f}",
         f"vacuum: max|div_perp F_perp| / max|dF_x/dx| = {stats['vacuum_div_ratio']:.1e}   "
@@ -410,6 +546,7 @@ def format_field_statistics(stats):
     for label, pct in stats["dielectric_share_percent"].items():
         lines.append(f"   {label:16s} {pct:5.1f} %")
     return lines
+
 
 
 # =============================================================================
@@ -638,12 +775,16 @@ def run_verification(guide, m, n, frequency, beta_interp, use_light_line_frequen
     return all(checks.values()), lines
 
 
+
+
+
 # =============================================================================
-# Top-level driver: everything needed for the plots and report, no plotting
+# run whole analysis
 # =============================================================================
 def run_lsm_analysis(guide, dispersion_modes, f_max, n_f, mode, use_light_line_frequency,
                      user_frequency, A_mn, n_x, n_y, f_min_factor=0.95, f_min=None,
-                     z_point=None, n_z=400, z_periods=2):
+                     z_point=None, n_z=400, z_periods=2,
+                     fourier_modes_n=4, theta_fourier=0.284, z_length=1.0):
     """
     Run the whole LSM calculation and return a results dict for lsm_mode_plotter.
 
@@ -652,6 +793,9 @@ def run_lsm_analysis(guide, dispersion_modes, f_max, n_f, mode, use_light_line_f
     mode             : (m, n) of the LSM mode used for the field plots
     z_point          : (x0, y0) for the E_z(z) trace; default (0, a/2)
     z_periods        : number of guide wavelengths shown in the E_z(z) trace
+    fourier_modes_n  : highest multipole order n in the Fourier expansion (n = 1..fourier_modes_n)
+    theta_fourier    : fixed polar angle [rad] at which the expansion is swept over r
+    z_length         : structure length used in the field amplitude alpha
     """
     m, n = mode
     disp = compute_dispersion(guide, dispersion_modes, f_max, n_f, f_min_factor, f_min)
@@ -666,6 +810,10 @@ def run_lsm_analysis(guide, dispersion_modes, f_max, n_f, mode, use_light_line_f
     forces = compute_force_analysis(guide, fields, x_grid, y_grid, k)
     stats = compute_field_statistics(guide, m, beta_mn, fields, forces, x_grid, y_grid, Y)
 
+    ky0, _, _ = calculate_k_mn(guide, m, beta_mn, frequency)
+    v_n, a_0, v_total, r = calc_fourier_poles(
+        A_mn, beta_mn, z_length, ky0, fourier_modes_n, guide.w, guide.a, theta_fourier)
+
     x0, y0 = z_point if z_point is not None else (0.0, guide.a / 2)
     z, E_z_z = compute_Ez_vs_z(guide, m, beta_mn, frequency, x0, y0, n_z, 2 * np.pi * z_periods, A_mn)
 
@@ -678,6 +826,9 @@ def run_lsm_analysis(guide, dispersion_modes, f_max, n_f, mode, use_light_line_f
         "x_grid": x_grid, "y_grid": y_grid, "X": X, "Y": Y,
         "fields": fields, "forces": forces, "stats": stats,
         "z": z, "E_z_z": E_z_z, "z_point": (x0, y0),
+        "multipole_components_2d_array": v_n, "total_multipole_components": v_total,
+        "polar_r_multipole": r, "multipole_a0_half": a_0 / 2,
+        "theta_fourier": theta_fourier,
     }
 
 

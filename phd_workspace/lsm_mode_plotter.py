@@ -208,6 +208,48 @@ def plot_Ez_vs_z(results, path, dpi=150):
     return _save(fig, path, dpi)
 
 
+def plot_fourier_multipoles(results, path, dpi=150):
+    """
+    Fourier (multipole) expansion of the longitudinal field at fixed polar angle theta, swept
+    over r: left, each component (a_0/2 and the n-th harmonics) on its own curve; right, the
+    total a_0/2 + sum_n. The amplitude prefactor is -j, so the field is (almost) purely
+    imaginary and the larger of the real / imaginary parts is shown.
+    """
+    r = results["polar_r_multipole"]
+    v_n = results["multipole_components_2d_array"]
+    a0_half = results["multipole_a0_half"]
+    total = results["total_multipole_components"]
+    w = results["guide"].w
+
+    if np.max(np.abs(np.imag(total))) > np.max(np.abs(np.real(total))):
+        part, label = np.imag, "Im"
+    else:
+        part, label = np.real, "Re"
+    x = r / w
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8), sharex=True)
+    ax = axes[0]
+    ax.plot(x, part(a0_half), "k--", label="$a_0/2$")
+    for i, row in enumerate(v_n, start=1):
+        ax.plot(x, part(row), label=f"$n={i}$")
+    ax.set_title("individual components")
+    ax.legend(fontsize=8, ncol=2)
+
+    axes[1].plot(x, part(total), "k", lw=2)
+    axes[1].set_title("total: $a_0/2 + \\sum_n$")
+
+    for ax in axes:
+        ax.axhline(0, color="gray", lw=0.5)
+        ax.set_xlabel("r / w")
+        ax.set_ylabel(f"{label}(longitudinal field expansion) (a.u.)")
+        ax.grid(alpha=0.3)
+
+    fig.suptitle(f"LSM$_{{{results['m']}{results['n']}}}$ Fourier multipole expansion, "
+                 f"$\\theta$ = {results['theta_fourier']:.3f} rad, n = 1..{len(v_n)}")
+    fig.tight_layout()
+    return _save(fig, path, dpi)
+
+
 # name used in lsm_mode_input.py -> (plot function, output file name)
 PLOTS = {
     "dispersion": (plot_dispersion, "dispersion.png"),
@@ -216,6 +258,7 @@ PLOTS = {
     "accel_vs_transverse": (plot_accel_vs_transverse, "accel_vs_transverse.png"),
     "Ez_3d": (plot_Ez_3d, "Ez_3d.png"),
     "Ez_vs_z": (plot_Ez_vs_z, "Ez_vs_z.png"),
+    "fourier_multipoles": (plot_fourier_multipoles, "fourier_multipoles.png"),
 }
 
 

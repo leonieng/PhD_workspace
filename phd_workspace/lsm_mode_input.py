@@ -15,10 +15,10 @@ from lsm_mode_plotter import plotter_wrapper
 # =============================================================================
 # 1. Waveguide geometry   (-w/2 < x < w/2, 0 < y < b; dielectric fills a < y < b)
 # =============================================================================
-w = 1.2e-3        # guide width in x                                   [m]
-b = 300e-6       # guide height in y (metal wall at y = b)            [m]
-a = 250e-6       # height of the air region (dielectric from y = a)   [m]
-eps_r = 5       # relative permittivity of the slab                  [-]
+w = 23e-3        # guide width in x                                   [m]
+b = 5e-3       # guide height in y (metal wall at y = b)            [m]
+a = 3e-3       # height of the air region (dielectric from y = a)   [m]
+eps_r = 10       # relative permittivity of the slab                  [-]
 
 # =============================================================================
 # 2. Dispersion curves
@@ -59,6 +59,11 @@ z_point = None                     # (x0, y0) [m] where E_z is sampled; None -> 
 n_z = 400                          # points along z
 z_periods = 2                      # number of guide wavelengths shown
 
+# Fourier multipole expansion of the longitudinal field
+fourier_modes_n = 4                # highest multipole order n (components n = 1..fourier_modes_n)
+theta_fourier = 0.284              # fixed polar angle [rad] at which the expansion is swept over r
+z_length = 1.0                     # structure length in the field amplitude alpha  [m]
+
 # =============================================================================
 # 5. Output
 # =============================================================================
@@ -68,9 +73,9 @@ report_name = "verification.txt"   # verification report (written to OUTPUT_DIR)
 
 # Which plots to make. Available:
 #   "dispersion", "field_components", "field_snapshots",
-#   "accel_vs_transverse", "Ez_3d", "Ez_vs_z"
+#   "accel_vs_transverse", "Ez_3d", "Ez_vs_z", "fourier_multipoles"
 PLOTS_TO_MAKE = ["dispersion", "field_components", "field_snapshots",
-                 "accel_vs_transverse", "Ez_3d", "Ez_vs_z"]
+                 "accel_vs_transverse", "Ez_3d", "Ez_vs_z", "fourier_multipoles"]
 
 # =============================================================================
 # 6. Verification
@@ -93,7 +98,8 @@ def main():
     results = run_lsm_analysis(
         guide, DISPERSION_MODES, f_max, n_f, (m, n), use_light_line_frequency, user_frequency,
         A_mn, n_x, n_y, f_min_factor=f_min_factor, f_min=f_min,
-        z_point=z_point, n_z=n_z, z_periods=z_periods)
+        z_point=z_point, n_z=n_z, z_periods=z_periods,
+        fourier_modes_n=fourier_modes_n, theta_fourier=theta_fourier, z_length=z_length)
 
     saved = plotter_wrapper(
         results, OUTPUT_DIR, dpi=dpi, plots=PLOTS_TO_MAKE,

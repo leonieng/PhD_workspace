@@ -1,7 +1,7 @@
 w=23.00 mm, b=5.00 mm, a=3.00 mm, eps_r=10
 LSM11 cutoff = 10.405 GHz
 LSM21 cutoff = 11.183 GHz
-f range: 9.89 - 15.00 GHz
+f range: 1.00 - 15.00 GHz
 LSM11 crosses the light line at f = 11.1672 GHz
 LSM11: beta = 234.03 rad/m at f = 11.17 GHz
 
